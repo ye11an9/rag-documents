@@ -1,0 +1,11 @@
+.env
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+.qdrant/
+
+# PDF는 라이선스와 용량 문제로 로컬에서만 준비합니다.
+datasets/*.pdf
+!datasets/README.md

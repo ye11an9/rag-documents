@@ -50,7 +50,12 @@ def find_project_root(start: Path) -> Path:
 
 PROJECT_ROOT = find_project_root(Path.cwd())
 DATASET_DIR = PROJECT_ROOT / "datasets"
-load_dotenv(PROJECT_ROOT / ".env")
+ENV_PATH = (PROJECT_ROOT / ".env").resolve()
+if not ENV_PATH.is_file():
+    raise FileNotFoundError(f"환경 변수 파일을 찾지 못했습니다: {ENV_PATH}")
+
+# Jupyter/Windows 프로세스에 남아 있는 오래된 키보다 프로젝트 .env를 우선한다.
+load_dotenv(dotenv_path=ENV_PATH, override=True, encoding="utf-8-sig")
 
 required_env = ("QDRANT_URL", "QDRANT_API_KEY")
 missing_env = [name for name in required_env if not os.getenv(name)]
@@ -62,6 +67,7 @@ if missing_env:
     )
 
 print(f"프로젝트 루트: {PROJECT_ROOT}")
+print(f"환경 변수 파일: {ENV_PATH}")
 print("✓ Qdrant Cloud 환경 변수가 설정되었습니다. (키 값은 출력하지 않음)")
 print("✓ OpenAI 키가 없거나 호출이 실패하면 로컬 폴백을 사용합니다.")
 
@@ -88,12 +94,23 @@ SECURITY_NAME_HINTS = (
     "key-details",
     "취약점",
 )
+DERIVATIVE_NAME_MARKERS = (
+    "_with_",
+    "_in_",
+    "_colored",
+    "_colors",
+    "_red",
+    "cats_only",
+    "abstraction",
+)
 
 
 def is_security_pdf(path: Path) -> bool:
     if path.name in UNRELATED_PDFS:
         return False
     normalized = path.stem.lower()
+    if any(marker in normalized for marker in DERIVATIVE_NAME_MARKERS):
+        return False
     leading_token = re.split(r"[_\-\s]", normalized, maxsplit=1)[0]
     return leading_token.isdigit() or any(
         hint in normalized for hint in SECURITY_NAME_HINTS
@@ -138,7 +155,13 @@ for pdf_path in pdf_paths:
     with pymupdf.open(pdf_path) as pdf:
         for page_index, page in enumerate(pdf):
             page_number = page_index + 1
-            page_text = page.get_text("text", sort=True).strip()
+            raw_text = page.get_text("text", sort=True)
+            normalized_lines = [
+                " ".join(line.split()) for line in raw_text.splitlines()
+            ]
+            page_text = re.sub(
+                r"\n{3,}", "\n\n", "\n".join(normalized_lines)
+            ).strip()
             if len(page_text) < 20:
                 skipped_pages.append(f"{pdf_path.name} p.{page_number}")
                 continue
@@ -407,13 +430,67 @@ class ParentDocumentRetriever:
         self.parent_k = parent_k
         self.child_fetch_k = child_fetch_k
 
+    @staticmethod
+    def _lexical_score(query: str, content: str) -> float:
+        normalized_query = unicodedata.normalize("NFKC", query).lower()
+        alias_text = " ".join(
+            english
+            for korean, english in SecurityHashEmbeddings.aliases.items()
+            if korean in normalized_query
+        )
+        expanded_query = f"{normalized_query} {alias_text}"
+        content_lower = content.lower()
+        latin_terms = re.findall(
+            r"[a-z0-9][a-z0-9._:/+\-]*", expanded_query
+        )
+        stop_terms = {"what", "how", "the", "and", "are", "from", "with"}
+        terms = [
+            term
+            for term in latin_terms
+            if len(term) >= 3 and term not in stop_terms
+        ]
+
+        score = 0.0
+        for term in set(terms):
+            occurrences = content_lower.count(term)
+            score += min(occurrences, 4) * (
+                2.0 if len(term) >= 5 else 1.0
+            )
+        for left, right in zip(latin_terms, latin_terms[1:]):
+            phrase = f"{left} {right}"
+            score += min(content_lower.count(phrase), 3) * 8.0
+            phrase_position = content_lower.find(phrase)
+            if phrase_position >= 0:
+                definition_window = content_lower[
+                    phrase_position : phrase_position + 240
+                ]
+                if "this metric" in definition_window:
+                    score += 24.0
+                preceding_text = content_lower[
+                    max(0, phrase_position - 40) : phrase_position
+                ]
+                if "table" in preceding_text:
+                    score += 12.0
+        return score
+
     def get_child_chunks(self, query: str, k: int | None = None) -> List[Document]:
         query = query.strip()
         if not query:
             raise ValueError("검색어는 비어 있을 수 없습니다.")
-        return self.vectorstore.similarity_search(
-            query, k=k if k is not None else self.child_fetch_k
+        result_k = k if k is not None else self.child_fetch_k
+        candidate_k = max(48, result_k * 8)
+        candidates = self.vectorstore.similarity_search(
+            query, k=candidate_k
         )
+        ranked = sorted(
+            enumerate(candidates),
+            key=lambda item: (
+                self._lexical_score(query, item[1].page_content),
+                -item[0],
+            ),
+            reverse=True,
+        )
+        return [document for _, document in ranked[:result_k]]
 
     def retrieve_with_evidence(
         self, query: str, parent_k: int | None = None

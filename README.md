@@ -16,6 +16,7 @@
 Python 3.10 이상이 필요합니다.
 
 ```bash
+cd rag-system
 python -m venv .venv
 # Windows: .venv\Scripts\activate
 # macOS/Linux: source .venv/bin/activate
@@ -30,13 +31,9 @@ QDRANT_API_KEY=your-qdrant-api-key
 OPENAI_API_KEY=your-openai-api-key
 ```
 
-사용 권한이 있는 보안 PDF를 `datasets/`에 직접 넣은 뒤 실행합니다. PDF 자체는 이 저장소에 포함하지 않습니다.
+사용 권한이 있는 보안 PDF를 `rag-system/datasets/`에 직접 넣은 뒤 실행합니다.
 
-```bash
-python notebooks/day2_security_rag.py
-```
-
-Jupyter에서는 완성된 [`notebooks/day2_team_project_template.ipynb`](notebooks/day2_team_project_template.ipynb)를 열어 **Run All**로 실행할 수 있습니다. VS Code의 Python 셀 실행을 선호하면 `# %%` 구분자가 포함된 `notebooks/day2_security_rag.py`를 사용하세요.
+Jupyter에서는 완성된 [`rag-system/examples/day2_team_project_template.ipynb`](rag-system/examples/day2_team_project_template.ipynb)를 열어 **Run All**로 실행할 수 있습니다.
 
 프로젝트 루트의 `.env`는 절대경로로 찾아 `override=True`로 로드합니다. 따라서 Windows나 Jupyter 프로세스에 오래된 API 키가 남아 있어도 이 프로젝트의 설정을 우선합니다. OpenAI 키가 없거나 호출이 실패하면 결정적 로컬 해시 임베딩과 근거 발췌 답변으로 폴백하며, Qdrant Cloud 정보는 항상 필요합니다.
 
@@ -52,3 +49,32 @@ Jupyter에서는 완성된 [`notebooks/day2_team_project_template.ipynb`](notebo
 - Parent 문서는 실행 중 메모리에 보관되므로 질문 전에 같은 PDF 집합으로 스크립트를 실행해야 합니다.
 
 자세한 데이터 준비 방법은 [datasets/README.md](datasets/README.md)를 참고하세요.
+
+## 두 가지 구현 버전
+
+이 저장소에는 서로 독립적인 두 구현이 공존합니다. (둘 다 `rag-system/examples/`)
+
+| 버전 | 파일 | 특징 |
+|---|---|---|
+| 팀 완성본 | `rag-system/examples/day2_team_project_template.ipynb` | PDF 자동 선별, 결정적 ID 멱등 저장, 로컬 해시 임베딩 폴백 |
+| 하이브리드 버전 | `rag-system/examples/day2_hybrid_rag.ipynb` | 하이브리드 검색(BM25+RRF), 카테고리 필터, 이식용 셀 제공 |
+
+## 하이브리드 버전: `rag-system/examples/day2_hybrid_rag.ipynb`
+
+Parent Document RAG를 Jupyter 노트북으로 구현한 버전으로, 다음 기능이 적용되어 있습니다.
+
+1. **청킹** — chunk_size 900 / chunk_overlap 150 (팀 합의값, 노트북 상단 `CHUNK_SIZE`/`CHUNK_OVERLAP`으로 조정)
+2. **검색 개수** — Parent retriever k=4, child 후보는 k×3 검색 후 중복 제거
+3. **프롬프트** — "핵심 답변 / 상세 설명(표) / 출처" 3단 답변 형식 강제
+4. **메타데이터 필터** — 문서별 `category` 부여 (CVE 관리, 취약점 평가, 사고 대응, SCAP 표준, 취약점 공개, CVE 작성 가이드) 및 Qdrant payload 인덱스 기반 필터 검색
+5. **하이브리드 검색** — BM25(rank-bm25) + 벡터 검색을 RRF(Reciprocal Rank Fusion)로 융합. BM25 토크나이저는 kiwipiepy 형태소 분석(조사·어미 제거)을 사용하며, 미설치 시 정규식+불용어로 폴백
+
+### 팀원 이식용 셀
+
+노트북 안의 `[이식용]` 표시 셀 3개는 다른 노트북에 **그 셀만 복사해도 동작**하도록 작성되어 있습니다. 각 셀 상단 주석에 전제 변수·변수명 매핑이 명시되어 있습니다.
+
+- **[이식용 A]** 카테고리 메타데이터 부여 + Qdrant payload 필터 (요구: `docs`)
+- **[이식용 B]** BM25 인덱스 + 벡터 RRF 하이브리드 (요구: `child_docs`, `vectorstore`, `parent_docstore`)
+- **[이식용 C]** Parent retriever k 튜닝 (요구: `vectorstore`, `parent_docstore`)
+
+PDF 경로는 노트북 상단 `PDF_DIR` 변수 하나로 관리합니다 (기본값 `rag-system/datasets/보안 pdf모음/`, 대안 예: `../datasets/보안 취약점 PDF`).

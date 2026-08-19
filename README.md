@@ -47,3 +47,15 @@ VS Code나 Jupyter에서 셀 단위로 실행하려면 `# %%` 구분자를 지�
 - Parent 문서는 실행 중 메모리에 보관되므로 질문 전에 같은 PDF 집합으로 스크립트를 실행해야 합니다.
 
 자세한 데이터 준비 방법은 [datasets/README.md](datasets/README.md)를 참고하세요.
+
+## 노트북 버전: `notebooks/day2_team_project.ipynb`
+
+동일한 Parent Document RAG를 Jupyter 노트북으로 구현한 버전으로, 다음 개선사항이 적용되어 있습니다.
+
+1. **청킹 전략 최적화** — chunk_size 600 / chunk_overlap 100 (표·목록이 많은 기술 문서에 맞게 조정)
+2. **검색 개수 조정** — Parent retriever k=4, child 후보는 k×3 검색 후 중복 제거
+3. **프롬프트 개선** — "핵심 답변 / 상세 설명(표) / 출처" 3단 답변 형식 강제
+4. **메타데이터 활용** — 문서별 `category` 부여 (CVE 관리, 취약점 평가, 사고 대응, SCAP 표준, 취약점 공개, CVE 작성 가이드) 및 Qdrant payload 인덱스 기반 필터 검색
+5. **하이브리드 검색** — BM25(rank-bm25) + 벡터 검색을 RRF(Reciprocal Rank Fusion)로 융합
+
+노트북은 `datasets/보안 pdf모음/` 폴더의 PDF 6종(CNA Rules v4.1.0, CVSS v4.0 명세, CISA 사고 대응 플레이북, Key Details Phrasing, NIST SP 800-126r4, NIST SP 800-216)을 로딩하도록 작성되어 있습니다. 경로는 노트북 상단에서 조정할 수 있습니다.

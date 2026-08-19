@@ -1,11 +1,12 @@
+.langgraph_api
+__pycache__
+.venv
 .env
-.venv/
-__pycache__/
+qdrant_db
+qdrant_db_debug
+qdrant_db_debug2
+database
+ai_service_rag.egg-info
+.ipynb_checkpoints
+.envmp_langchain_check.py
 *.py[cod]
-*.egg-info/
-.ipynb_checkpoints/
-.qdrant/
-
-# PDF는 라이선스와 용량 문제로 로컬에서만 준비합니다.
-datasets/*.pdf
-!datasets/README.md

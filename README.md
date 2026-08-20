@@ -1,5 +1,21 @@
 # 보안 취약점 문서 기반 RAG 시스템
 
+## 팀 프로젝트 주제 및 데이터
+
+### Day 2 — 보안 취약점 문서 기반 RAG
+
+CVE, CWE, CVSS, NIST, OWASP 등 보안 표준과 취약점 대응 문서를 검색해 근거가 있는 답변을 생성하는 RAG 프로젝트입니다. `rag-system/datasets/`에 있는 보안 PDF를 페이지와 Child chunk로 나누어 Qdrant Cloud에 저장하며, 답변에 참고 파일과 페이지를 표시합니다.
+
+- 실행 노트북: [`examples/day2_team_project_template.ipynb`](examples/day2_team_project_template.ipynb)
+- 사용 데이터: CVE/CWE/CVSS 명세, NIST 지침, OWASP 자료, 취약점 공개·대응 관련 PDF
+
+### Day 3 — CVE·CWE Text2SQL
+
+자연어 보안 질문을 PostgreSQL 쿼리로 변환해 실제 악용 취약점과 취약점 유형을 분석하는 Text2SQL 프로젝트입니다. CISA KEV의 CVE 데이터와 MITRE CWE Comprehensive View 데이터를 Supabase의 `CVE`, `CWE` 테이블에 저장하고, 복수 CWE 값을 분해해 두 테이블을 연결합니다.
+
+- 실행 노트북: [`examples/day3_team_project_template.ipynb`](examples/day3_team_project_template.ipynb)
+- 사용 데이터: CISA Known Exploited Vulnerabilities의 `cve.csv`, MITRE CWE Comprehensive View의 `cwe.csv`
+
 `datasets/`의 CVE, CWE, CVSS, NIST, OWASP 및 취약점 대응 PDF를 자동으로 골라 Qdrant Cloud에 인덱싱하고, 검색 근거의 파일명과 페이지를 표시하는 2일차 팀 프로젝트입니다. 천안시 정책 실습 PDF는 인덱싱 대상에서 명시적으로 제외합니다.
 
 ## 구현 흐름

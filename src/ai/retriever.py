@@ -1,6 +1,8 @@
 import os
-from typing import List
 from concurrent.futures import ThreadPoolExecutor
+from typing import List
+
+from ai.config import load_project_env
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 from langchain_qdrant import QdrantVectorStore
@@ -8,11 +10,54 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_core.documents import Document
 
 
+SECURITY_COLLECTION_PREFIX = "security_vulnerability_day2_"
+DEFAULT_SECURITY_COLLECTION = "security_vulnerability_day2_828e3048c16d"
+
+
+def _resolve_security_collection(client: QdrantClient) -> str:
+    """설정값 또는 Qdrant 목록에서 Day 2 보안 문서 컬렉션을 찾는다."""
+    configured_name = os.getenv("QDRANT_COLLECTION_NAME")
+    available_names = {
+        collection.name for collection in client.get_collections().collections
+    }
+
+    if configured_name:
+        if configured_name not in available_names:
+            raise ValueError(
+                f"QDRANT_COLLECTION_NAME={configured_name!r} 컬렉션을 찾을 수 없습니다."
+            )
+        return configured_name
+
+    # 현재 examples/day2_team_project_template.ipynb가 생성·검증한 컬렉션이다.
+    if DEFAULT_SECURITY_COLLECTION in available_names:
+        return DEFAULT_SECURITY_COLLECTION
+
+    candidates = [
+        name for name in available_names if name.startswith(SECURITY_COLLECTION_PREFIX)
+    ]
+    if not candidates:
+        raise ValueError(
+            "security_vulnerability_day2_* Qdrant 컬렉션을 찾을 수 없습니다. "
+            "Day 2 노트북을 먼저 실행하거나 .env에 QDRANT_COLLECTION_NAME을 설정하세요."
+        )
+
+    # 기본 컬렉션이 없는 환경에서는 데이터가 가장 많은 호환 컬렉션을 사용한다.
+    return max(
+        candidates,
+        key=lambda name: client.count(collection_name=name, exact=True).count,
+    )
+
+
 class ParentDocumentRetriever:
-    def __init__(self, client: QdrantClient, embeddings: OpenAIEmbeddings):
+    def __init__(
+        self,
+        client: QdrantClient,
+        embeddings: OpenAIEmbeddings,
+        collection_name: str,
+    ):
         self.client = client
         self.embeddings = embeddings
-        self.child_collection = "cheonan_child_chunks"
+        self.child_collection = collection_name
 
         # Child vectorstore
         self.child_vectorstore = QdrantVectorStore(
@@ -75,6 +120,7 @@ class ParentDocumentRetriever:
             # 각 parent의 모든 chunk를 결합하여 docstore 생성
             parent_docstore = {}
             for parent_id, chunks in parent_groups.items():
+                chunks.sort(key=lambda chunk: chunk.metadata.get("chunk_index", 0))
                 # Chunk들을 결합
                 combined_content = "\n\n".join([chunk.page_content for chunk in chunks])
 
@@ -85,7 +131,8 @@ class ParentDocumentRetriever:
                     metadata={
                         "source": first_chunk.metadata.get("source", "알 수 없음"),
                         "page": first_chunk.metadata.get("page"),
-                        "parent_id": parent_id
+                        "parent_id": parent_id,
+                        "document_family": first_chunk.metadata.get("document_family"),
                     }
                 )
                 parent_docstore[parent_id] = parent_doc
@@ -137,10 +184,15 @@ class ParentDocumentRetriever:
 
 
 class MetadataFilteredRetriever:
-    def __init__(self, client: QdrantClient, embeddings: OpenAIEmbeddings):
+    def __init__(
+        self,
+        client: QdrantClient,
+        embeddings: OpenAIEmbeddings,
+        collection_name: str,
+    ):
         self.client = client
         self.embeddings = embeddings
-        self.collection_name = "cheonan_metadata"
+        self.collection_name = collection_name
 
         # Vectorstore
         self.vectorstore = QdrantVectorStore(
@@ -162,7 +214,7 @@ class MetadataFilteredRetriever:
             검색된 문서 리스트
         """
         try:
-            # 카테고리 필터가 있으면 적용
+            # 보안 문서군 필터가 있으면 적용
             filter_conditions = None
             if categories:
                 # 여러 카테고리에 대해 OR 조건 적용
@@ -170,7 +222,7 @@ class MetadataFilteredRetriever:
                     filter_conditions = models.Filter(
                         must=[
                             models.FieldCondition(
-                                key="metadata.category",
+                                key="metadata.document_family",
                                 match=models.MatchValue(value=categories[0])
                             )
                         ]
@@ -180,7 +232,7 @@ class MetadataFilteredRetriever:
                     filter_conditions = models.Filter(
                         should=[
                             models.FieldCondition(
-                                key="metadata.category",
+                                key="metadata.document_family",
                                 match=models.MatchValue(value=cat)
                             )
                             for cat in categories
@@ -208,25 +260,34 @@ class MetadataFilteredRetriever:
 class VectorRetriever:
     def __init__(self):
         """Qdrant 벡터 검색기 초기화"""
+        load_project_env()
+        qdrant_url = os.getenv("QDRANT_URL")
+        qdrant_api_key = os.getenv("QDRANT_API_KEY")
+        if not qdrant_url or not qdrant_api_key:
+            raise ValueError(".env에 QDRANT_URL과 QDRANT_API_KEY를 설정해야 합니다.")
+
         # Qdrant 클라이언트 초기화
         self.client = QdrantClient(
-            url=os.getenv("QDRANT_URL"),
-            api_key=os.getenv("QDRANT_API_KEY")
+            url=qdrant_url,
+            api_key=qdrant_api_key,
         )
+        self.collection_name = _resolve_security_collection(self.client)
 
         # 임베딩 모델 초기화
         self.embeddings = OpenAIEmbeddings(
-            model="text-embedding-3-large"
+            model="text-embedding-3-small"
         )
 
         # 두 retriever 초기화
         self.parent_retriever = ParentDocumentRetriever(
             self.client,
-            self.embeddings
+            self.embeddings,
+            self.collection_name,
         )
         self.metadata_retriever = MetadataFilteredRetriever(
             self.client,
-            self.embeddings
+            self.embeddings,
+            self.collection_name,
         )
 
     def search(self, query: str, k: int = 3, score_threshold: float = 0.5, categories: List[str] = None) -> list[Document]:

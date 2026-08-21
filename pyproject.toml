@@ -27,7 +27,9 @@ dependencies = [
     "psycopg2-binary>=2.9.0",
     "pandas>=2.0.0",
     "streamlit>=1.40.0",
-    "supabase>=2.31.0"
+    "supabase>=2.31.0",
+    "rank-bm25>=0.2",
+    "kiwipiepy>=0.18"
 ]
 
 [tool.setuptools.packages.find]

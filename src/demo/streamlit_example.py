@@ -7,11 +7,11 @@ src_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(src_dir))
 
 import streamlit as st
-from dotenv import load_dotenv
 from ai import create_graph
+from ai.config import load_project_env
 
-# 환경 변수 로드
-load_dotenv()
+# 실행 위치와 관계없이 프로젝트 루트의 .env를 우선 사용
+ENV_PATH = load_project_env()
 
 graph = create_graph()
 
@@ -59,8 +59,10 @@ def display_workflow_info(result: dict):
                     with meta_cols[0]:
                         st.caption(f"📖 페이지: {doc.metadata.get('page', 'N/A')}")
                     with meta_cols[1]:
-                        if doc.metadata.get('category'):
-                            st.caption(f"🏷️ 카테고리: {doc.metadata.get('category')}")
+                        if doc.metadata.get('document_family'):
+                            st.caption(
+                                f"🏷️ 문서군: {doc.metadata.get('document_family')}"
+                            )
                     with meta_cols[2]:
                         if doc.metadata.get('score'):
                             st.caption(f"⭐ 점수: {doc.metadata.get('score', 0):.3f}")
@@ -85,12 +87,12 @@ def display_workflow_info(result: dict):
 def main():
     """메인 함수"""
     st.set_page_config(
-        page_title="천안시 AI 에이전트",
-        page_icon="🏛️",
+        page_title="CVE/CWE 보안 AI 에이전트",
+        page_icon="🛡️",
         layout="wide"
     )
 
-    st.title("🏛️ 천안시 AI 에이전트 워크플로")
+    st.title("🛡️ CVE/CWE 보안 AI 에이전트")
     st.markdown("---")
 
     # 사이드바 - 환경 변수 확인
@@ -117,15 +119,15 @@ def main():
         - "안녕하세요"
         - "고마워"
 
-        **벡터 검색 (예: 문서):**
-        - "천안시 주요 사업 계획은?"
-        - "천안시 복지 정책에 대해 알려주세요"
-        - "두정동 공영주차장은 언제 완공되나요?"
+        **보안 문서 검색:**
+        - "CVE와 CWE의 차이는?"
+        - "CVSS v4의 Attack Vector를 설명해줘"
+        - "NIST의 취약점 대응 절차는?"
 
-        **DB 검색 (예: 정보):**
-        - "복지정책국에는 어떤 부서가 있나요?"
-        - "본관 1층에 위치한 부서들의 전화번호는?"
-        - "041-521-2080 이 전화번호 어디인가요?"
+        **CVE/CWE 데이터베이스 검색:**
+        - "CVE-2024-43468의 대응 조치는?"
+        - "CWE-89의 탐지 방법과 완화 방법은?"
+        - "Microsoft의 랜섬웨어 연관 CVE를 보여줘"
         """)
 
         if st.button("대화 초기화", type="secondary"):
@@ -144,7 +146,7 @@ def main():
         )
 
     # 사용자 입력
-    if prompt := st.chat_input("질문을 입력하세요..."):
+    if prompt := st.chat_input("CVE, CWE 또는 보안 표준에 관해 질문하세요..."):
         # 사용자 메시지 표시 및 저장
         display_message("user", prompt)
         st.session_state.messages.append({"role": "user", "content": prompt})
